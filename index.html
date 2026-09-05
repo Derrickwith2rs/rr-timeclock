@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<!--
+RR Appliances GPS Time Clock - Webpage
+------------------------------------------
+Host this on GitHub Pages. Each employee's personal QR code will
+link here with their name in the URL, like:
+  https://yourusername.github.io/rr-timeclock/?name=Colton+Tietge
+
+CONFIG: fill in the four values in the <script> section below
+before publishing.
+-->
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RR Appliances Time Clock</title>
+<style>
+  body { font-family: Arial, sans-serif; text-align: center; padding: 40px 20px; background: #f4f4f4; }
+  h1 { font-size: 22px; }
+  #status { margin: 20px 0; font-size: 16px; }
+  button { font-size: 20px; padding: 20px 40px; margin: 10px; border: none; border-radius: 8px; color: white; cursor: pointer; }
+  #clockInBtn { background: #81b29a; }
+  #clockOutBtn { background: #e07a5f; }
+  #result { margin-top: 20px; font-weight: bold; }
+</style>
+</head>
+<body>
+  <h1>RR Appliances Time Clock</h1>
+  <div id="status">Checking your location...</div>
+  <div id="buttons" style="display:none;">
+    <p id="nameDisplay"></p>
+    <button id="clockInBtn">Clock In</button>
+    <button id="clockOutBtn">Clock Out</button>
+  </div>
+  <div id="result"></div>
+
+<script>
+  // ----- CONFIG: must match Code.gs -----
+  var SHOP_LAT = 39.583183952335524;       // shop latitude
+  var SHOP_LNG = -84.29284007312326;       // shop longitude
+  var MAX_DISTANCE_FEET = 150;
+  var SHARED_SECRET = "RRAppliances-Carlisle-2026-x7Q"; // must match Code.gs
+  var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwoPnDKmDCYHjnEmKxC_LNKe53C84xWFWUUyn1lQLRIooNagTKjlHlCII0igvezhfFz/exec";
+  // ---------------------------------------
+
+  var params = new URLSearchParams(window.location.search);
+  var employeeName = params.get("name") || "Unknown";
+  document.getElementById("nameDisplay").textContent = "Clocking in as: " + employeeName;
+
+  function getDistanceFeet(lat1, lng1, lat2, lng2) {
+    var R = 20902231;
+    var dLat = (lat2 - lat1) * Math.PI / 180;
+    var dLng = (lng2 - lng1) * Math.PI / 180;
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  var userLat, userLng;
+
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    userLat = pos.coords.latitude;
+    userLng = pos.coords.longitude;
+    var distance = getDistanceFeet(SHOP_LAT, SHOP_LNG, userLat, userLng);
+
+    if (distance <= MAX_DISTANCE_FEET) {
+      document.getElementById("status").textContent = "You're at the shop.";
+      document.getElementById("buttons").style.display = "block";
+    } else {
+      document.getElementById("status").textContent =
+        "You must be at the shop to clock in/out. (" + Math.round(distance) + " ft away)";
+    }
+  }, function (err) {
+    document.getElementById("status").textContent =
+      "Location permission is required to clock in. Please allow location access and reload.";
+  }, { enableHighAccuracy: true, timeout: 10000 });
+
+  function submitAction(action) {
+    document.getElementById("result").textContent = "Submitting...";
+    fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        name: employeeName,
+        action: action,
+        lat: userLat,
+        lng: userLng,
+        secret: SHARED_SECRET
+      })
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        document.getElementById("result").textContent = data.message;
+      })
+      .catch(function (err) {
+        document.getElementById("result").textContent = "Error submitting. Try again.";
+      });
+  }
+
+  document.getElementById("clockInBtn").addEventListener("click", function () {
+    submitAction("Clock In");
+  });
+  document.getElementById("clockOutBtn").addEventListener("click", function () {
+    submitAction("Clock Out");
+  });
+</script>
+</body>
+</html>
