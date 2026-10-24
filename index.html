@@ -28,10 +28,25 @@
   .ok  { color:var(--green); }
   .bad { color:var(--red); }
   .clock { font-size:15px; color:var(--muted); margin-top:18px; }
+  .note { color:var(--amber); }
   .hidden { display:none; }
+  #saved { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+           color:#fff; text-align:center; padding:24px; z-index:10; }
+  #saved.in  { background:var(--green); }
+  #saved.out { background:var(--blue); }
+  #saved .big { font-size:64px; font-weight:900; line-height:1; }
+  #saved .what { font-size:30px; font-weight:800; margin-top:18px; }
+  #saved .who { font-size:22px; margin-top:10px; opacity:.95; }
+  #saved .tap { font-size:16px; margin-top:36px; opacity:.85; }
 </style>
 </head>
 <body>
+<div id="saved" class="hidden">
+  <div class="big">✓ SAVED</div>
+  <div class="what" id="savedWhat"></div>
+  <div class="who" id="savedWho"></div>
+  <div class="tap">You can close this page. Tap anywhere to go back.</div>
+</div>
 <div class="wrap">
   <div class="brand">RR APPLIANCES TIME CLOCK</div>
   <div class="card">
@@ -114,13 +129,21 @@
     if (busy || !pos) return;
     busy = true; updateButtons();
     $("result").className = "result";
-    $("result").textContent = "Saving…";
+    $("result").textContent = "Saving… please wait, don't tap again";
     post({ action: action, lat: pos.coords.latitude, lng: pos.coords.longitude,
            accuracyFt: pos.coords.accuracy * 3.28084 })
       .then(function (d) {
-        $("result").className = "result " + (d.ok ? "ok" : "bad");
-        $("result").textContent = (d.ok ? "✓ " : "") + d.message;
         if (typeof d.onClock === "boolean") { onClock = d.onClock; window._since = d.since || ""; }
+        if (d.ok) {
+          $("result").className = "result ok";
+          $("result").textContent = "✓ " + d.message;
+          $("saved").className = d.onClock ? "in" : "out";
+          $("savedWhat").textContent = (d.verb || action.toUpperCase()) + " at " + (d.time || "");
+          $("savedWho").textContent = d.name || "";
+        } else {
+          $("result").className = "result " + (d.notice ? "note" : "bad");
+          $("result").textContent = d.message;
+        }
       })
       .catch(function () {
         $("result").className = "result bad";
@@ -132,6 +155,7 @@
   $("inBtn").onclick = function () { punch("Clock In"); };
   $("outBtn").onclick = function () { punch("Clock Out"); };
   $("retryBtn").onclick = checkLocation;
+  $("saved").onclick = function () { $("saved").className = "hidden"; };
 
   if (!id) {
     $("name").textContent = "Scan your QR code";
