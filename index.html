@@ -66,7 +66,7 @@
   var SHARED_SECRET = "RRA-TimeClock-v2-Carlisle-9fK3";   // must match Code.gs
   var SHOP_LAT = 39.583183952335524;
   var SHOP_LNG = -84.29284007312326;
-  var RADIUS_FT = 150;
+  var RADIUS_FT = 300;
 
   var id = new URLSearchParams(window.location.search).get("id");
   var pos = null, onClock = null, busy = false;
@@ -104,25 +104,39 @@
     $("outBtn").classList.toggle("hidden", !(ready && onClock));
   }
 
-  function checkLocation() {
+  function logAttempt(reason, dist, acc) {
+    try { post({ action: "log", reason: reason, dist: dist, acc: acc, ua: navigator.userAgent }); } catch (e) {}
+  }
+
+  function checkLocation(lowAccuracy) {
     $("retryBtn").classList.add("hidden");
-    $("status").textContent = "Checking your location…";
-    if (!navigator.geolocation) { $("status").textContent = "This phone can't share location."; return; }
+    $("status").textContent = lowAccuracy ? "Still checking your location…" : "Checking your location…";
+    if (!navigator.geolocation) { $("status").textContent = "This phone can't share location."; logAttempt("no geolocation"); return; }
     navigator.geolocation.getCurrentPosition(function (p) {
       var dist = Math.round(distanceFt(p.coords.latitude, p.coords.longitude, SHOP_LAT, SHOP_LNG));
-      if (dist <= RADIUS_FT) {
+      var acc = Math.round(p.coords.accuracy * 3.28084);
+      if (dist - Math.min(acc, 100) <= RADIUS_FT) {
         pos = p;
         $("status").textContent = "You're at the store ✓";
       } else {
         pos = null;
-        $("status").textContent = "You're about " + dist + " ft away. You have to be at the store.";
+        $("status").textContent = "Your phone says you're about " + dist + " ft from the store. If you're inside, step near the front door or a window and tap below.";
         $("retryBtn").classList.remove("hidden");
+        logAttempt("too far", dist, acc);
       }
       updateButtons();
-    }, function () {
-      $("status").textContent = "Location is required. Allow location access, then tap below.";
+    }, function (err) {
+      if (!lowAccuracy && err && err.code !== 1) { checkLocation(true); return; }
+      if (err && err.code === 1) {
+        $("status").textContent = "Location is blocked for this page. Turn on Location for your browser in your phone's Settings, then tap below.";
+        logAttempt("location blocked");
+      } else {
+        $("status").textContent = "Your phone couldn't get a GPS signal. Step near the front door or a window and tap below.";
+        logAttempt("no GPS fix (" + (err ? err.code : "?") + ")");
+      }
       $("retryBtn").classList.remove("hidden");
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    }, lowAccuracy ? { enableHighAccuracy: false, timeout: 20000, maximumAge: 60000 }
+                   : { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   }
 
   function punch(action) {
@@ -154,7 +168,7 @@
 
   $("inBtn").onclick = function () { punch("Clock In"); };
   $("outBtn").onclick = function () { punch("Clock Out"); };
-  $("retryBtn").onclick = checkLocation;
+  $("retryBtn").onclick = function () { checkLocation(false); };
   $("saved").onclick = function () { $("saved").className = "hidden"; };
 
   if (!id) {
@@ -166,7 +180,7 @@
       $("name").textContent = d.name;
       onClock = d.onClock; window._since = d.since || "";
       showState();
-      checkLocation();
+      checkLocation(false);
     }).catch(function () {
       $("name").textContent = "Can't connect";
       $("status").textContent = "Couldn't reach the time clock. Check your signal and refresh.";
